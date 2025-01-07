@@ -68,7 +68,7 @@ const addProducts = async (req, res) => {
     catch (error) {
         res.status(500).send({
             success: false,
-            message: "Error in all products api",
+            message: "Error in add products api",
             error: error,
         })
         console.log(error);
@@ -101,7 +101,7 @@ const deleteProduct = async (req, res) => {
     catch (error) {
         res.status(500).send({
             success: false,
-            message: "Error in all products api",
+            message: "Error in delete products api",
             error: error,
         })
         console.log(error);
