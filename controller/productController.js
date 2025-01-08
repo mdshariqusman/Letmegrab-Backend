@@ -66,7 +66,6 @@ const getAllProducts = async (req, res) => {
             res.status(200).send({
                 success: true,
                 message: "Product Records",
-                total_products: products?.length,
                 data: products,
                 page: {
                     current_page: page || '1',
