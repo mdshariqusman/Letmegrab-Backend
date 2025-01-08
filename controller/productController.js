@@ -3,20 +3,59 @@ const db = require("../db");
 // get the products
 const getAllProducts = async (req, res) => {
     try {
-        // {
-        //     product_id: 1,
-        //     product_name: 'Shariq',
-        //     price: 900,
-        //     url: 'https://example.com/image.jpg',
-        //     category_id: '1'
-        // }
-        // const {category_id, materials_id, product_name, price } = req.query;
+        const { sku, product_name, category_name, material_name } = req.query;
         const { page } = req.query;
         const offset = ((page || 1) - 1) * 10;
-        const data = await db.query("SELECT * FROM new_table limit ? offset ?", [10, offset])
+        let query = `
+            SELECT 
+        p.product_id,
+        p.product_name,
+        p.SKU,
+        p.price,
+        pm.url AS media_url,
+        c.category_name AS category,
+        GROUP_CONCAT(m.material_name) AS material
+    FROM 
+        new_table p
+    LEFT JOIN 
+        product_media pm ON p.product_id = pm.product_id
+    LEFT JOIN 
+        category c ON p.category_id = c.category_id
+    LEFT JOIN 
+        material m ON FIND_IN_SET(m.material_id, p.material_ids)
+    WHERE 1=1
+        `;
+        if (sku) {
+            query += ` AND p.SKU LIKE ?`;
+        }
+        if (product_name) {
+            query += ` AND p.product_name LIKE ?`;
+        }
+        if (category_name) {
+            query += ` AND c.category_name LIKE ?`;
+        }
+        if (material_name) {
+            query += ` AND m.material_name LIKE ?`;
+        }
+
+        query += `
+    GROUP BY 
+        p.product_id
+    LIMIT ? OFFSET ?;
+`;
+        const params = [
+            sku ? `%${sku}%` : null,
+            product_name ? `%${product_name}%` : null,
+            category_name ? `%${category_name}%` : null,
+            material_name ? `%${material_name}%` : null,
+            10,
+            offset
+        ].filter(param => param !== null);
+
+        const [products] = await db.query(query, params);
         const [totalPageData] = await db.query("select count(*) as count from new_table")
         const totalPages = Math.ceil(totalPageData[0]?.count / 10);
-        if (!data) {
+        if (products.length === 0) {
             res.status(404).send({
                 success: false,
                 message: "Data not found",
@@ -27,8 +66,8 @@ const getAllProducts = async (req, res) => {
             res.status(200).send({
                 success: true,
                 message: "Product Records",
-                total_products: data[0]?.length,
-                data: data[0],
+                total_products: products?.length,
+                data: products,
                 page: {
                     current_page: page || '1',
                     totalPages: totalPages,
@@ -48,15 +87,6 @@ const getAllProducts = async (req, res) => {
 };
 
 // add product
-// Sameple request body
-// { 
-//     "sku" :"dfdmksjfms4353f",
-//     "product_name" :"Shariq's Api", 
-//       "price": 800,
-//       "material":"cotton",
-//       "category_name":"Testing",
-//       "url":"test.png"
-//       }
 const addProducts = async (req, res) => {
     try {
         const { sku, product_name, price, material, category_name, url } = req.body;
@@ -68,7 +98,7 @@ const addProducts = async (req, res) => {
         }
         //Checking if SKU is already present
         const [productSku] = await db.query(`SELECT SKU FROM new_table WHERE SKU = ?`, [sku]);
-        if (productSku.length > 0)  {
+        if (productSku.length > 0) {
             return res.status(500).send({
                 success: false,
                 message: "SKU is already registered",
@@ -104,7 +134,7 @@ const addProducts = async (req, res) => {
         const product_id = productResult.insertId;
 
         //Media Table
-        const [mediaRow] = await db.query(`SELECT media_id FROM product_media WHERE url = ?`, [url]);
+        const [mediaRow] = await db.query(`SELECT media_id FROM product_media WHERE product_id = ?`, [product_id]);
         let mediaId;
         if (mediaRow.length > 0) {
             mediaId = mediaRow[0].media_id;
@@ -148,7 +178,7 @@ const deleteProduct = async (req, res) => {
             })
         }
         const [productRows] = await db.query(`SELECT product_id FROM new_table WHERE product_id = ?`, [producId]);
-        if (productRows.length == 0)  {
+        if (productRows.length == 0) {
             return res.status(500).send({
                 success: false,
                 message: "Invalid Product ID",
@@ -223,7 +253,7 @@ const updateProduct = async (req, res) => {
             materialId = materialResult.insertId;
         }
         //Update Media Table
-        const [mediaRow] = await db.query(`SELECT media_id FROM product_media WHERE url = ?`, [url]);
+        const [mediaRow] = await db.query(`SELECT media_id FROM product_media WHERE product_id = ?`, [producId]);
         let mediaId;
         if (mediaRow.length > 0) {
             mediaId = mediaRow[0].media_id;
@@ -264,4 +294,37 @@ const updateProduct = async (req, res) => {
     }
 };
 
-module.exports = { getAllProducts, addProducts, deleteProduct, updateProduct }
+const getAllFilters = async (req, res) => {
+    try {
+        const [skuRows] = await db.query(`SELECT DISTINCT SKU FROM new_table`);
+        const [productNameRows] = await db.query(`SELECT DISTINCT product_name FROM new_table`);
+        const [categoryRows] = await db.query(`SELECT DISTINCT category_name FROM category`);
+        const [materialRows] = await db.query(`SELECT DISTINCT material_name FROM material`);
+
+        const skus = skuRows.map(row => row.SKU);
+        const productNames = productNameRows.map(row => row.product_name);
+        const categories = categoryRows.map(row => row.category_name);
+        const materials = materialRows.map(row => row.material_name);
+
+        res.status(200).send({
+            success: true,
+            message: "Successfully retrieved all values",
+            data: {
+                skus,
+                productNames,
+                categories,
+                materials
+            }
+        });
+    }
+    catch (error) {
+        res.status(500).send({
+            success: false,
+            message: "Error in all filters api",
+            error: error,
+        })
+        console.log(error);
+    }
+};
+
+module.exports = { getAllProducts, addProducts, deleteProduct, updateProduct, getAllFilters }
