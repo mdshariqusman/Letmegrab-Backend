@@ -25,17 +25,34 @@ const getAllProducts = async (req, res) => {
         material m ON FIND_IN_SET(m.material_id, p.material_ids)
     WHERE 1=1
         `;
+        let countQuery = `
+    SELECT 
+        COUNT(DISTINCT p.product_id) AS total
+    FROM 
+        new_table p
+    LEFT JOIN 
+        product_media pm ON p.product_id = pm.product_id
+    LEFT JOIN 
+        category c ON p.category_id = c.category_id
+    LEFT JOIN 
+        material m ON FIND_IN_SET(m.material_id, p.material_ids)
+    WHERE 1=1
+`;
         if (sku) {
             query += ` AND p.SKU LIKE ?`;
+            countQuery += ` AND p.SKU LIKE ?`;
         }
         if (product_name) {
             query += ` AND p.product_name LIKE ?`;
+            countQuery += ` AND p.product_name LIKE ?`;
         }
         if (category_name) {
             query += ` AND c.category_name LIKE ?`;
+            countQuery += ` AND c.category_name LIKE ?`;
         }
         if (material_name) {
             query += ` AND m.material_name LIKE ?`;
+            countQuery += ` AND m.material_name LIKE ?`;
         }
 
         query += `
@@ -51,10 +68,17 @@ const getAllProducts = async (req, res) => {
             10,
             offset
         ].filter(param => param !== null);
+        const countParams = [
+            sku ? `%${sku}%` : null,
+            product_name ? `%${product_name}%` : null,
+            category_name ? `%${category_name}%` : null,
+            material_name ? `%${material_name}%` : null,
+        ].filter(param => param !== null);
 
         const [products] = await db.query(query, params);
-        const [totalPageData] = await db.query("select count(*) as count from new_table")
-        const totalPages = Math.ceil(totalPageData[0]?.count / 10);
+        const [countResult] = await db.query(countQuery, countParams);
+        const totalCount = countResult[0].total;
+        const totalPages = Math.ceil(totalCount / 10);
         if (products.length === 0) {
             res.status(404).send({
                 success: false,
